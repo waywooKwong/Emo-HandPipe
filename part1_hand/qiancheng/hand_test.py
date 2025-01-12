@@ -110,6 +110,7 @@ with mp_hands.Hands(
         middle_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
         ring_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
         pinky_tip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
+        thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
 
         # 获取对应的 PIP 关节
         index_finger_pip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_PIP]
@@ -419,10 +420,6 @@ with mp_hands.Hands(
     for stroke in all_strokes:
         for i in range(1, len(stroke)):
             cv2.line(image, stroke[i-1], stroke[i], (0, 0, 255), 2)
-
-    # 显示当前模式
-    mode_text = "橡皮擦模式" if eraser_mode else "绘画模式"
-    cv2.putText(image, mode_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
     cv2.imshow('MediaPipe Hands', cv2.flip(image, 1))
     if cv2.waitKey(5) & 0xFF == 27:
