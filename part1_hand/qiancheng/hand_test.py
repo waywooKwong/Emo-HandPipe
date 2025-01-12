@@ -43,6 +43,23 @@ def create_smooth_curve(points, smoothing=10):
 
 # For webcam input:
 cap = cv2.VideoCapture(0)
+
+# 检查摄像头是否成功打开
+if not cap.isOpened():
+    print("错误：无法打开摄像头！")
+    print("请检查：")
+    print("1. 是否已连接摄像头")
+    print("2. 摄像头是否被其他程序占用")
+    print("3. 是否有摄像头访问权限")
+    exit()
+
+# 打印摄像头信息
+print(f"摄像头分辨率: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
+print(f"摄像头帧率: {int(cap.get(cv2.CAP_PROP_FPS))}")
+
+def calculate_distance(p1, p2):
+    return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+
 with mp_hands.Hands(
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5) as hands:
@@ -402,6 +419,10 @@ with mp_hands.Hands(
     for stroke in all_strokes:
         for i in range(1, len(stroke)):
             cv2.line(image, stroke[i-1], stroke[i], (0, 0, 255), 2)
+
+    # 显示当前模式
+    mode_text = "橡皮擦模式" if eraser_mode else "绘画模式"
+    cv2.putText(image, mode_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
     cv2.imshow('MediaPipe Hands', cv2.flip(image, 1))
     if cv2.waitKey(5) & 0xFF == 27:
