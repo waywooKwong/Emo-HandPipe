@@ -1,2 +1,3 @@
 # 忽略掉整个 embedding 文件夹，它下面存储的是编码模型
 embedding/
+./screenshots
