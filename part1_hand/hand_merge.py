@@ -244,7 +244,8 @@ def handwriting_recognition():
     1. 实时手势跟踪和轨迹绘制
     2. 比耶手势触发文字识别
     3. 竖大拇指手势保存表情并退出
-    4. 智能平滑处理确保书写轨迹流畅
+    4. 三指竖起手势删除上一个字符
+    5. 智能平滑处理确保书写轨迹流畅
     
     Returns:
         str: 识别出的文字。如果没有识别出文字或用户提前退出，返回空字符串。
@@ -304,6 +305,10 @@ def handwriting_recognition():
         # 添加竖大拇指手势检测相关变量
         thumbs_up_frames = 0
         THUMBS_UP_THRESHOLD = 15  # 竖大拇指手势阈值
+
+        # 添加删除手势检测相关变量
+        delete_gesture_frames = 0
+        DELETE_GESTURE_THRESHOLD = 15 
         
         # 创建画布
         _, first_frame = cap.read()
@@ -367,6 +372,61 @@ def handwriting_recognition():
                     )
                     
                     is_thumbs_up_gesture = is_thumb_up and is_other_fingers_down
+
+                    # 添加删除手势检测（食指、中指、无名指竖起）
+                    is_index_up_delete = index_finger_tip.y < index_finger_pip.y - 0.02  # 降低阈值，从0.04降到0.02
+                    is_middle_up_delete = middle_finger_tip.y < middle_finger_pip.y - 0.02  # 降低阈值
+                    is_ring_up_delete = ring_finger_tip.y < ring_finger_pip.y - 0.02  # 降低阈值
+                    is_pinky_down_delete = pinky_tip.y > pinky_pip.y - 0.01  # 放宽小指弯曲的判定
+                    is_thumb_down_delete = thumb_tip.y > thumb_ip.y - 0.02  # 放宽拇指弯曲的判定
+
+                    # 优化删除手势判定逻辑
+                    is_delete_gesture = (
+                        is_index_up_delete and is_middle_up_delete and is_ring_up_delete and  # 三指竖起
+                        (is_pinky_down_delete or pinky_tip.y > pinky_pip.y - 0.03) and  # 放宽小指判定
+                        (is_thumb_down_delete or thumb_tip.x < thumb_ip.x)  # 增加拇指水平位置判定
+                    )
+
+                    # 添加删除手势计数器
+                    if is_delete_gesture:
+                        delete_gesture_frames += 1  
+                        # 在手指位置绘制确认进度圈
+                        if delete_gesture_frames < DELETE_GESTURE_THRESHOLD:
+                            # 获取图像尺寸
+                            h, w, _ = display_image.shape
+                            # 计算进度（0到360度）
+                            progress = int((delete_gesture_frames / DELETE_GESTURE_THRESHOLD) * 360)
+                            # 在食指指尖位置绘制红色进度圈
+                            center = (int(index_finger_tip.x * w), int(index_finger_tip.y * h))
+                            radius = 30
+                            cv2.ellipse(display_image, center, (radius, radius), -90, 
+                                      0, progress, (0, 0, 255), 2)
+                            # 显示删除提示
+                            cv2.putText(display_image, "Deleting...", 
+                                      (center[0] - 40, center[1] - 40),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+                        if delete_gesture_frames >= DELETE_GESTURE_THRESHOLD:
+                            # 删除上一个识别的字符
+                            if recognized_text:
+                                recognized_text = recognized_text[:-1]
+                                print(f"删除上一个字符，当前文本: {recognized_text}")
+                            # 清空画布
+                            canvas = np.zeros_like(first_frame)
+                            index_finger_tips = []
+                            points_buffer.clear()
+                            last_drawn_point = None
+                            recording = False
+                            lost_frames = 0
+                            last_valid_hand = None
+                            delete_gesture_frames = 0  # 重置计数器
+                            # 立即显示清空后的画布
+                            display_image = cv2.addWeighted(display_image, 1, canvas, 0.7, 0)
+                            cv2.imshow('MediaPipe Hands', cv2.flip(display_image, 1))
+                            cv2.waitKey(1)  # 刷新显示
+                        continue  # 如果是删除手势，跳过后续的绘制逻辑
+                    else:
+                        delete_gesture_frames = 0  # 如果不是删除手势，重置计数器
                     
                     if is_thumbs_up_gesture:
                         thumbs_up_frames += 1
