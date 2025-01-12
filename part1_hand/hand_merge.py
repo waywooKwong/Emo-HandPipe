@@ -77,8 +77,14 @@ def recognize_text(image):
         print(f"OCR识别错误: {str(e)}")
         return None
 
-def save_screenshot(image):
-    """保存截图并识别字符"""
+def process_handwriting(image, recognized_text=''):
+    """处理手写字符识别并拼接结果
+    Args:
+        image: 输入图像
+        recognized_text: 已识别的文本字符串，默认为空字符串
+    Returns:
+        tuple: (文件名, 拼接后的文本字符串)
+    """
     if not os.path.exists('screenshots'):
         os.makedirs('screenshots')
     
@@ -90,9 +96,18 @@ def save_screenshot(image):
     print(f'Screenshot saved as {filename}')
     
     # 对保存的图像进行文字识别
-    recognized_char = recognize_text(image)
+    new_char = recognize_text(image)
     
-    return filename, recognized_char
+    # 如果成功识别到字符，则拼接到已有文本中
+    if new_char:
+        recognized_text += new_char
+        print(f"当前识别的完整文本: {recognized_text}")
+    
+    return filename, recognized_text
+
+def save_screenshot(image):
+    """保存截图并识别字符 - 已弃用，请使用 process_handwriting"""
+    return process_handwriting(image)
 
 def calculate_distance(p1, p2):
     """计算两点之间的距离"""
@@ -220,295 +235,318 @@ def interpolate_points(p1, p2, num_points=5):
         # 对于斜线，使用较弱的平滑
         return points
 
-# For webcam input:
-cap = cv2.VideoCapture(0)
-
-# 设置摄像头帧率为60fps
-cap.set(cv2.CAP_PROP_FPS, 60)
-# 设置高分辨率以获得更好的效果
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-
-# 检查摄像头是否成功打开
-if not cap.isOpened():
-    print("错误：无法打开摄像头！")
-    print("请检查：")
-    print("1. 是否已连接摄像头")
-    print("2. 摄像头是否被其他程序占用")
-    print("3. 是否有摄像头访问权限")
-    exit()
-
-# 打印摄像头实际设置
-actual_fps = int(cap.get(cv2.CAP_PROP_FPS))
-actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-print(f"摄像头实际帧率: {actual_fps}")
-print(f"摄像头实际分辨率: {actual_width}x{actual_height}")
-
-with mp_hands.Hands(
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5,
-    max_num_hands=1) as hands:
-  # 初始化变量
-  index_finger_tips = []
-  recording = False
-  frame_count = 0
-  last_point = None
-  last_drawn_point = None
-  MIN_DISTANCE = 5    # 减小距离阈值，使点的记录更频繁
-  SAMPLING_INTERVAL = 1  # 减小采样间隔，使采样更频繁
-  SMOOTH_BUFFER_SIZE = 3  # 减小平滑缓冲区大小，使响应更快
-  INTERPOLATION_POINTS = 8  # 增加插值点数量，使线条更平滑
-  LINE_THICKNESS = 5  # 保持线条粗细不变
-  
-  # 添加状态计数器，用于防止意外断触
-  lost_frames = 0
-  MAX_LOST_FRAMES = 5  # 减小最大丢失帧数，使恢复更快
-  last_valid_hand = None
-  
-  # 添加比耶手势检测相关变量
-  peace_gesture_frames = 0
-  PEACE_GESTURE_THRESHOLD = 15  # 保持比耶手势阈值不变
-  
-  # 添加竖大拇指手势检测相关变量
-  thumbs_up_frames = 0
-  THUMBS_UP_THRESHOLD = 15  # 竖大拇指手势阈值
-  
-  # 创建画布
-  _, first_frame = cap.read()
-  canvas = np.zeros_like(first_frame)
-  
-  # 用于实时平滑的点缓冲区
-  points_buffer = deque(maxlen=SMOOTH_BUFFER_SIZE)
-
-  while cap.isOpened():
-    success, image = cap.read()
-    if not success:
-      print("Ignoring empty camera frame.")
-      continue
-
-    frame_count += 1
-    image.flags.writeable = False
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    results = hands.process(image)
-
-    image.flags.writeable = True
-    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-    display_image = image.copy()
+def handwriting_recognition():
+    """
+    运行手写识别主程序。
+    包含手势跟踪、手写轨迹记录、文字识别等功能。
     
-    # 检测是否有手势
-    hand_detected = False
+    主要功能：
+    1. 实时手势跟踪和轨迹绘制
+    2. 比耶手势触发文字识别
+    3. 竖大拇指手势保存表情并退出
+    4. 智能平滑处理确保书写轨迹流畅
     
-    if results.multi_hand_landmarks:
-      for hand_landmarks in results.multi_hand_landmarks:
-        mp_drawing.draw_landmarks(
-            display_image,
-            hand_landmarks,
-            mp_hands.HAND_CONNECTIONS)
-
-        # 获取所有手指关节的坐标
-        index_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-        index_finger_pip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_PIP]
-        middle_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
-        middle_finger_pip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_PIP]
-        ring_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
-        ring_finger_pip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_PIP]
-        pinky_tip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
-        pinky_pip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_PIP]
-        thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
-        thumb_ip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_IP]
-
-        # 检测比耶手势
-        is_index_straight = index_finger_tip.y < index_finger_pip.y - 0.04
-        is_middle_straight = middle_finger_tip.y < middle_finger_pip.y - 0.04
-        is_ring_bent = ring_finger_tip.y > ring_finger_pip.y
-        is_pinky_bent = pinky_tip.y > pinky_pip.y
+    Returns:
+        str: 识别出的文字。如果没有识别出文字或用户提前退出，返回空字符串。
+    """
+    # 初始化文本变量
+    recognized_text = ""
+    
+    # 初始化摄像头
+    cap = cv2.VideoCapture(0)
+    
+    # 设置摄像头参数
+    cap.set(cv2.CAP_PROP_FPS, 60)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    
+    # 检查摄像头是否成功打开
+    if not cap.isOpened():
+        print("错误：无法打开摄像头！")
+        print("请检查：")
+        print("1. 是否已连接摄像头")
+        print("2. 摄像头是否被其他程序占用")
+        print("3. 是否有摄像头访问权限")
+        return recognized_text
+    
+    # 打印摄像头实际设置
+    actual_fps = int(cap.get(cv2.CAP_PROP_FPS))
+    actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    print(f"摄像头实际帧率: {actual_fps}")
+    print(f"摄像头实际分辨率: {actual_width}x{actual_height}")
+    
+    with mp_hands.Hands(
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+        max_num_hands=1) as hands:
+        # 初始化变量
+        index_finger_tips = []
+        recording = False
+        frame_count = 0
+        last_point = None
+        last_drawn_point = None
+        MIN_DISTANCE = 5    # 减小距离阈值，使点的记录更频繁
+        SAMPLING_INTERVAL = 1  # 减小采样间隔，使采样更频繁
+        SMOOTH_BUFFER_SIZE = 3  # 减小平滑缓冲区大小，使响应更快
+        INTERPOLATION_POINTS = 8  # 增加插值点数量，使线条更平滑
+        LINE_THICKNESS = 5  # 保持线条粗细不变
         
-        is_peace_gesture = is_index_straight and is_middle_straight and is_ring_bent and is_pinky_bent
+        # 添加状态计数器，用于防止意外断触
+        lost_frames = 0
+        MAX_LOST_FRAMES = 5  # 减小最大丢失帧数，使恢复更快
+        last_valid_hand = None
         
-        # 检测竖大拇指手势
-        is_thumb_up = thumb_tip.y < thumb_ip.y - 0.1  # 大拇指明显竖直
-        is_other_fingers_down = (
-            index_finger_tip.y > index_finger_pip.y and  # 食指弯曲
-            middle_finger_tip.y > middle_finger_pip.y and  # 中指弯曲
-            ring_finger_tip.y > ring_finger_pip.y and  # 无名指弯曲
-            pinky_tip.y > pinky_pip.y  # 小指弯曲
-        )
+        # 添加比耶手势检测相关变量
+        peace_gesture_frames = 0
+        PEACE_GESTURE_THRESHOLD = 15  # 保持比耶手势阈值不变
         
-        is_thumbs_up_gesture = is_thumb_up and is_other_fingers_down
+        # 添加竖大拇指手势检测相关变量
+        thumbs_up_frames = 0
+        THUMBS_UP_THRESHOLD = 15  # 竖大拇指手势阈值
         
-        if is_thumbs_up_gesture:
-            thumbs_up_frames += 1
-            # 在大拇指位置绘制确认进度圈
-            if thumbs_up_frames < THUMBS_UP_THRESHOLD:
-                # 获取图像尺寸
-                h, w, _ = display_image.shape
-                # 计算进度（0到360度）
-                progress = int((thumbs_up_frames / THUMBS_UP_THRESHOLD) * 360)
-                # 在大拇指指尖位置绘制黄色进度圈
-                center = (int(thumb_tip.x * w), int(thumb_tip.y * h))
-                radius = 30
-                # 绘制完整的圆形背景
-                cv2.circle(display_image, center, radius, (0, 255, 255), 2)
-                # 绘制进度弧
-                cv2.ellipse(display_image, center, (radius, radius), -90, 
-                           0, progress, (0, 255, 255), 4)
-                # 在圆圈中心绘制一个点
-                cv2.circle(display_image, center, 4, (0, 255, 255), -1)
-                # 显示截图提示
-                cv2.putText(display_image, "Taking photo...", 
-                           (center[0] - 60, center[1] - 40),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-
-            if thumbs_up_frames >= THUMBS_UP_THRESHOLD:
-                # 保存当前帧（不包含轨迹）
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                if not os.path.exists('part1_hand/pic/emo'):
-                    os.makedirs('part1_hand/pic/emo')
-                filename = f'part1_hand/pic/emo/thumbs_up_{timestamp}.png'
-                # 保存镜像后的图像
-                cv2.imwrite(filename, cv2.flip(image, 1))
-                print(f"表情照片已保存: {filename}")
-                
-                # 显示退出消息
-                h, w, _ = display_image.shape
-                text = "Goodbye!"
-                text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 2)[0]
-                text_x = (w - text_size[0]) // 2
-                text_y = (h + text_size[1]) // 2
-                
-                # 创建一个临时图像用于绘制镜像文字
-                temp_image = np.zeros_like(display_image)
-                cv2.putText(temp_image, text, (text_x, text_y),
-                          cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 2)
-                # 水平翻转临时图像
-                temp_image = cv2.flip(temp_image, 1)
-                # 将临时图像叠加到原始图像上
-                display_image = cv2.addWeighted(display_image, 1, temp_image, 1, 0)
-                
-                # 显示最后一帧
-                cv2.imshow('MediaPipe Hands', cv2.flip(display_image, 1))
-                cv2.waitKey(1500)  # 显示1.5秒告别消息
-                
-                # 释放摄像头并关闭所有窗口
-                cap.release()
-                cv2.destroyAllWindows()
-                break
-            continue  # 如果是竖大拇指手势，跳过后续的绘制逻辑
-        else:
-            thumbs_up_frames = 0  # 如果不是竖大拇指手势，重置计数器
+        # 创建画布
+        _, first_frame = cap.read()
+        canvas = np.zeros_like(first_frame)
         
-        if is_peace_gesture:
-            peace_gesture_frames += 1
-            # 在手指位置绘制确认进度圈
-            if peace_gesture_frames < PEACE_GESTURE_THRESHOLD:
-                # 获取图像尺寸
-                h, w, _ = display_image.shape
-                # 计算进度（0到360度）
-                progress = int((peace_gesture_frames / PEACE_GESTURE_THRESHOLD) * 360)
-                # 在食指指尖位置绘制绿色进度圈
-                center = (int(index_finger_tip.x * w), int(index_finger_tip.y * h))
-                radius = 30
-                cv2.ellipse(display_image, center, (radius, radius), -90, 
-                           0, progress, (0, 255, 0), 2)
-                # 显示保存提示
-                cv2.putText(display_image, "Saving...", 
-                           (center[0] - 40, center[1] - 40),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-
-            if peace_gesture_frames >= PEACE_GESTURE_THRESHOLD:
-                # 触发截屏和清屏
-                if len(index_finger_tips) > 0:
-                    filename, text = save_screenshot(cv2.flip(canvas, 1))
-                    if text:
-                        print(f"保存图片: {filename}")
-                        print(f"识别文字: {text}")
-                canvas = np.zeros_like(first_frame)
-                index_finger_tips = []
-                points_buffer.clear()
-                last_drawn_point = None
-                recording = False
-                lost_frames = 0
-                last_valid_hand = None
-                peace_gesture_frames = 0  # 重置计数器
-            continue  # 如果是比耶手势，跳过后续的绘制逻辑
-        else:
-            peace_gesture_frames = 0  # 如果不是比耶手势，重置计数器
-
-        # 调整手势判断阈值，适当放宽但保持一定准确性
-        is_index_up = index_finger_tip.y < index_finger_pip.y - 0.03  # 食指伸直要求适中
-        is_middle_down = middle_finger_tip.y > middle_finger_pip.y  # 中指只要弯曲即可
-        is_ring_down = ring_finger_tip.y > ring_finger_pip.y  # 无名指只要弯曲即可
-        is_pinky_down = pinky_tip.y > pinky_pip.y  # 小指只要弯曲即可
-        is_thumb_down = thumb_tip.y > thumb_ip.y - 0.01  # 拇指稍微放宽要求
-
-        # 要求：食指必须伸直，其他手指弯曲（但要求没那么严格）
-        if is_index_up and (is_middle_down and (is_ring_down or is_pinky_down)):
-            hand_detected = True
-            last_valid_hand = hand_landmarks
-            lost_frames = 0  # 重置丢失帧计数
+        # 用于实时平滑的点缓冲区
+        points_buffer = deque(maxlen=SMOOTH_BUFFER_SIZE)
+        
+        while cap.isOpened():
+            success, image = cap.read()
+            if not success:
+                print("Ignoring empty camera frame.")
+                continue
             
-            h, w, _ = image.shape
-            cx, cy = int(index_finger_tip.x * w), int(index_finger_tip.y * h)
-            current_point = (cx, cy)
+            frame_count += 1
+            image.flags.writeable = False
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            results = hands.process(image)
             
-            # 实时平滑处理
-            points_buffer.append(current_point)
-            smoothed_point = smooth_point(current_point, points_buffer)
-
-            # 只在采样间隔帧数到达时记录点
-            if frame_count % SAMPLING_INTERVAL == 0:
-                if not recording:
-                    index_finger_tips.append(None)
-                    recording = True
-                    last_point = smoothed_point
-                    last_drawn_point = smoothed_point
-                    index_finger_tips.append(smoothed_point)
-                    cv2.circle(canvas, smoothed_point, LINE_THICKNESS, (0, 0, 255), -1)
-                elif calculate_distance(smoothed_point, last_point) >= MIN_DISTANCE:
-                    # 增加插值点的处理
-                    interp_points = interpolate_points(last_drawn_point, smoothed_point, INTERPOLATION_POINTS)
-                    if len(interp_points) > 1:
-                        # 对插值点进行智能平滑
-                        smooth_points = smart_smooth_points(interp_points)
-                        
-                        # 绘制平滑后的线段
-                        for i in range(1, len(smooth_points)):
-                            cv2.line(canvas, smooth_points[i-1], smooth_points[i], 
-                                   (0, 0, 255), LINE_THICKNESS)
+            image.flags.writeable = True
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            display_image = image.copy()
+            
+            # 检测是否有手势
+            hand_detected = False
+            
+            if results.multi_hand_landmarks:
+                for hand_landmarks in results.multi_hand_landmarks:
+                    mp_drawing.draw_landmarks(
+                        display_image,
+                        hand_landmarks,
+                        mp_hands.HAND_CONNECTIONS)
                     
-                    index_finger_tips.append(smoothed_point)
-                    last_point = smoothed_point
-                    last_drawn_point = smoothed_point
+                    # 获取所有手指关节的坐标
+                    index_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+                    index_finger_pip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_PIP]
+                    middle_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
+                    middle_finger_pip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_PIP]
+                    ring_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
+                    ring_finger_pip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_PIP]
+                    pinky_tip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
+                    pinky_pip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_PIP]
+                    thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
+                    thumb_ip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_IP]
+                    
+                    # 检测比耶手势
+                    is_index_straight = index_finger_tip.y < index_finger_pip.y - 0.04
+                    is_middle_straight = middle_finger_tip.y < middle_finger_pip.y - 0.04
+                    is_ring_bent = ring_finger_tip.y > ring_finger_pip.y
+                    is_pinky_bent = pinky_tip.y > pinky_pip.y
+                    
+                    is_peace_gesture = is_index_straight and is_middle_straight and is_ring_bent and is_pinky_bent
+                    
+                    # 检测竖大拇指手势
+                    is_thumb_up = thumb_tip.y < thumb_ip.y - 0.1  # 大拇指明显竖直
+                    is_other_fingers_down = (
+                        index_finger_tip.y > index_finger_pip.y and  # 食指弯曲
+                        middle_finger_tip.y > middle_finger_pip.y and  # 中指弯曲
+                        ring_finger_tip.y > ring_finger_pip.y and  # 无名指弯曲
+                        pinky_tip.y > pinky_pip.y  # 小指弯曲
+                    )
+                    
+                    is_thumbs_up_gesture = is_thumb_up and is_other_fingers_down
+                    
+                    if is_thumbs_up_gesture:
+                        thumbs_up_frames += 1
+                        # 在大拇指位置绘制确认进度圈
+                        if thumbs_up_frames < THUMBS_UP_THRESHOLD:
+                            # 获取图像尺寸
+                            h, w, _ = display_image.shape
+                            # 计算进度（0到360度）
+                            progress = int((thumbs_up_frames / THUMBS_UP_THRESHOLD) * 360)
+                            # 在大拇指指尖位置绘制黄色进度圈
+                            center = (int(thumb_tip.x * w), int(thumb_tip.y * h))
+                            radius = 30
+                            # 绘制完整的圆形背景
+                            cv2.circle(display_image, center, radius, (0, 255, 255), 2)
+                            # 绘制进度弧
+                            cv2.ellipse(display_image, center, (radius, radius), -90, 
+                                      0, progress, (0, 255, 255), 4)
+                            # 在圆圈中心绘制一个点
+                            cv2.circle(display_image, center, 4, (0, 255, 255), -1)
+                            # 显示截图提示
+                            cv2.putText(display_image, "Taking photo...", 
+                                      (center[0] - 60, center[1] - 40),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                        
+                        if thumbs_up_frames >= THUMBS_UP_THRESHOLD:
+                            # 保存当前帧（不包含轨迹）
+                            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                            if not os.path.exists('part1_hand/pic/emo'):
+                                os.makedirs('part1_hand/pic/emo')
+                            ### 保存为指定图片
+                            filename = 'part1_hand/pic/emo/user_emo.png'
+                            # 保存镜像后的图像
+                            cv2.imwrite(filename, cv2.flip(image, 1))
+                            print(f"表情照片已保存: {filename}")
+                            
+                            # 显示退出消息
+                            h, w, _ = display_image.shape
+                            text = "Goodbye!"
+                            text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 2)[0]
+                            text_x = (w - text_size[0]) // 2
+                            text_y = (h + text_size[1]) // 2
+                            
+                            # 创建一个临时图像用于绘制镜像文字
+                            temp_image = np.zeros_like(display_image)
+                            cv2.putText(temp_image, text, (text_x, text_y),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 2)
+                            # 水平翻转临时图像
+                            temp_image = cv2.flip(temp_image, 1)
+                            # 将临时图像叠加到原始图像上
+                            display_image = cv2.addWeighted(display_image, 1, temp_image, 1, 0)
+                            
+                            # 显示最后一帧
+                            cv2.imshow('MediaPipe Hands', cv2.flip(display_image, 1))
+                            cv2.waitKey(1500)  # 显示1.5秒告别消息
+                            
+                            # 释放摄像头并关闭所有窗口
+                            cap.release()
+                            cv2.destroyAllWindows()
+                            return recognized_text
+                        continue  # 如果是竖大拇指手势，跳过后续的绘制逻辑
+                    else:
+                        thumbs_up_frames = 0  # 如果不是竖大拇指手势，重置计数器
+                    
+                    if is_peace_gesture:
+                        peace_gesture_frames += 1
+                        # 在手指位置绘制确认进度圈
+                        if peace_gesture_frames < PEACE_GESTURE_THRESHOLD:
+                            # 获取图像尺寸
+                            h, w, _ = display_image.shape
+                            # 计算进度（0到360度）
+                            progress = int((peace_gesture_frames / PEACE_GESTURE_THRESHOLD) * 360)
+                            # 在食指指尖位置绘制绿色进度圈
+                            center = (int(index_finger_tip.x * w), int(index_finger_tip.y * h))
+                            radius = 30
+                            cv2.ellipse(display_image, center, (radius, radius), -90, 
+                                      0, progress, (0, 255, 0), 2)
+                            # 显示保存提示
+                            cv2.putText(display_image, "Saving...", 
+                                      (center[0] - 40, center[1] - 40),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                        
+                        if peace_gesture_frames >= PEACE_GESTURE_THRESHOLD:
+                            # 触发截屏和清屏
+                            if len(index_finger_tips) > 0:
+                                filename, text = process_handwriting(cv2.flip(canvas, 1), recognized_text)
+                                if text:
+                                    recognized_text = text
+                                    print(f"保存图片: {filename}")
+                                    print(f"当前识别的完整文本: {recognized_text}")
+                            canvas = np.zeros_like(first_frame)
+                            index_finger_tips = []
+                            points_buffer.clear()
+                            last_drawn_point = None
+                            recording = False
+                            lost_frames = 0
+                            last_valid_hand = None
+                            peace_gesture_frames = 0  # 重置计数器
+                        continue  # 如果是比耶手势，跳过后续的绘制逻辑
+                    else:
+                        peace_gesture_frames = 0  # 如果不是比耶手势，重置计数器
+                    
+                    # 调整手势判断阈值，适当放宽但保持一定准确性
+                    is_index_up = index_finger_tip.y < index_finger_pip.y - 0.03  # 食指伸直要求适中
+                    is_middle_down = middle_finger_tip.y > middle_finger_pip.y  # 中指只要弯曲即可
+                    is_ring_down = ring_finger_tip.y > ring_finger_pip.y  # 无名指只要弯曲即可
+                    is_pinky_down = pinky_tip.y > pinky_pip.y  # 小指只要弯曲即可
+                    is_thumb_down = thumb_tip.y > thumb_ip.y - 0.01  # 拇指稍微放宽要求
+                    
+                    # 要求：食指必须伸直，其他手指弯曲（但要求没那么严格）
+                    if is_index_up and (is_middle_down and (is_ring_down or is_pinky_down)):
+                        hand_detected = True
+                        last_valid_hand = hand_landmarks
+                        lost_frames = 0  # 重置丢失帧计数
+                        
+                        h, w, _ = image.shape
+                        cx, cy = int(index_finger_tip.x * w), int(index_finger_tip.y * h)
+                        current_point = (cx, cy)
+                        
+                        # 实时平滑处理
+                        points_buffer.append(current_point)
+                        smoothed_point = smooth_point(current_point, points_buffer)
+                        
+                        # 只在采样间隔帧数到达时记录点
+                        if frame_count % SAMPLING_INTERVAL == 0:
+                            if not recording:
+                                index_finger_tips.append(None)
+                                recording = True
+                                last_point = smoothed_point
+                                last_drawn_point = smoothed_point
+                                index_finger_tips.append(smoothed_point)
+                                cv2.circle(canvas, smoothed_point, LINE_THICKNESS, (0, 0, 255), -1)
+                            elif calculate_distance(smoothed_point, last_point) >= MIN_DISTANCE:
+                                # 增加插值点的处理
+                                interp_points = interpolate_points(last_drawn_point, smoothed_point, INTERPOLATION_POINTS)
+                                if len(interp_points) > 1:
+                                    # 对插值点进行智能平滑
+                                    smooth_points = smart_smooth_points(interp_points)
+                                    
+                                    # 绘制平滑后的线段
+                                    for i in range(1, len(smooth_points)):
+                                        cv2.line(canvas, smooth_points[i-1], smooth_points[i], 
+                                               (0, 0, 255), LINE_THICKNESS)
+                                
+                                index_finger_tips.append(smoothed_point)
+                                last_point = smoothed_point
+                                last_drawn_point = smoothed_point
+                        
+                        # 在显示图像上绘制当前点
+                        cv2.circle(display_image, smoothed_point, LINE_THICKNESS+2, (0, 255, 0), -1)
+            
+            # 处理手势丢失的情况
+            if not hand_detected:
+                lost_frames += 1
+                if lost_frames >= MAX_LOST_FRAMES:  # 只有连续丢失足够多帧才重置状态
+                    recording = False
+                    points_buffer.clear()
+                    last_drawn_point = None
+                    last_valid_hand = None
+                elif last_valid_hand and recording:  # 如果只是短暂丢失，使用最后一个有效的手势位置
+                    index_finger_tip = last_valid_hand.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+                    h, w, _ = image.shape
+                    cx, cy = int(index_finger_tip.x * w), int(index_finger_tip.y * h)
+                    current_point = (cx, cy)
+                    points_buffer.append(current_point)
+            
+            # 将canvas叠加到display_image上
+            display_image = cv2.addWeighted(display_image, 1, canvas, 0.7, 0)
+            
+            # 显示镜像图像
+            cv2.imshow('MediaPipe Hands', cv2.flip(display_image, 1))
+            
+            # 检测按键
+            key = cv2.waitKey(5) & 0xFF
+            if key == 27:  # ESC键退出
+                break
+        
+        cap.release()
+        cv2.destroyAllWindows()
+        return recognized_text
 
-            # 在显示图像上绘制当前点
-            cv2.circle(display_image, smoothed_point, LINE_THICKNESS+2, (0, 255, 0), -1)
-    
-    # 处理手势丢失的情况
-    if not hand_detected:
-        lost_frames += 1
-        if lost_frames >= MAX_LOST_FRAMES:  # 只有连续丢失足够多帧才重置状态
-            recording = False
-            points_buffer.clear()
-            last_drawn_point = None
-            last_valid_hand = None
-        elif last_valid_hand and recording:  # 如果只是短暂丢失，使用最后一个有效的手势位置
-            index_finger_tip = last_valid_hand.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-            h, w, _ = image.shape
-            cx, cy = int(index_finger_tip.x * w), int(index_finger_tip.y * h)
-            current_point = (cx, cy)
-            points_buffer.append(current_point)
-
-    # 将canvas叠加到display_image上
-    display_image = cv2.addWeighted(display_image, 1, canvas, 0.7, 0)
-
-    # 显示镜像图像
-    cv2.imshow('MediaPipe Hands', cv2.flip(display_image, 1))
-    
-    # 检测按键
-    key = cv2.waitKey(5) & 0xFF
-    if key == 27:  # ESC键退出
-        break
-
-cap.release()
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    result = handwriting_recognition()
+    print(f"最终识别的文本: {result}")

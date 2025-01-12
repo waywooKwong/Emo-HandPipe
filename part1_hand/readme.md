@@ -1,6 +1,8 @@
 # 手势识别
 
-由 钱程和王璞 负责实现
+由 钱程、王璞、邝伟华 负责实现，
+
+钱程和邝伟华实现手势动作，王璞实现手写字符识别
 
 ## 一、手写字符识别模型
 
@@ -8,7 +10,7 @@
 
 访问 github 地址，下载最新模型：
 
-![](https://nankai.feishu.cn/space/api/box/stream/download/asynccode/?code=M2MwMDQzMTUzZDUxMWVhODc4NjNhZmE3ZGQ1NWI0OTJfbjR0M1c2cUxEMjhnMlgyNkQzc2ZueUpRTjRzbDNZNFhfVG9rZW46SXZncmJ3RUlNb2gyZFN4Q21yN2NDcXNzblNoXzE3MzY2NzU3Nzg6MTczNjY3OTM3OF9WNA)
+<img src="readme_pic/image.png" width="500" alt="Installation screenshot">
 
 2. 打开安装包：
 
@@ -16,7 +18,7 @@
 
 注意这里要把最后两个包勾选上，不然没有中文识别
 
-![](https://nankai.feishu.cn/space/api/box/stream/download/asynccode/?code=YTMzZmY1MDU0MWI5ZDI4MWNjYjgxODBjYTBmZTY5MzFfMmQ1TG5NcnR0ZXJoc0h1SDhCUFhYekc1ck1VY0g3VGxfVG9rZW46UEoyVGJhVFI1b1VYSmZ4Zmw1eGNFbGZpblVkXzE3MzY2NzU3Nzg6MTczNjY3OTM3OF9WNA)
+<img src="readme_pic/image2.png" width="500" alt="Installation screenshot">
 
 3. 安装 python 库
 
