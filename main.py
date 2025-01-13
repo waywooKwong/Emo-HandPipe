@@ -12,5 +12,5 @@ if __name__ == "__main__":
     emo_info = emo_analysis.analyze_emotion(emo_img_path)
 
     # 3. Part3_llm 生成行为预测结果
-    result = llm_generate.model_generate("ok的手势", emo_info)
+    result = llm_generate.model_generate(hand_info, emo_info)
     print("预测结果:", result)
