@@ -456,10 +456,10 @@ def handwriting_recognition():
                         if thumbs_up_frames >= THUMBS_UP_THRESHOLD:
                             # 保存当前帧（不包含轨迹）
                             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                            if not os.path.exists('part1_hand/pic/emo'):
-                                os.makedirs('part1_hand/pic/emo')
+                            if not os.path.exists(r'part1_hand/pic/emo'):
+                                os.makedirs(r'part1_hand/pic/emo')
                             ### 保存为指定图片
-                            filename = 'part1_hand/pic/emo/user_emo.png'
+                            filename = r'part1_hand/pic/emo/user_emo.png'
                             # 保存镜像后的图像
                             cv2.imwrite(filename, cv2.flip(image, 1))
                             print(f"表情照片已保存: {filename}")

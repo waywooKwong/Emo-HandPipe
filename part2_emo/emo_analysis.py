@@ -30,6 +30,6 @@ def analyze_emotion(img_path=r"part2_emo\kuangweihua\test.jpg"):
 
 if __name__ == "__main__":
     # 测试代码
-    test_img_path = r"part2_emo\kuangweihua\test.jpg"
+    test_img_path = r"part1_hand\pic\emo\user_emo.png"
     result = analyze_emotion(test_img_path)
     print(f"图片中人物情绪信息为：{result}")
