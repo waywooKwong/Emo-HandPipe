@@ -4,4 +4,10 @@
 
 20250110 初始化仓库，调研deepface
 
-20250112 实现emo_analysis, llm_generate
+20250112 借用钱程的主机，和他一起调试hand_merge的手语字符书写模块，添加了确认与删除、退出功能
+
+20250113 给王璞提建议尝试OCR api尝试应用到手语字符识别模块，确实work了！
+
+20250114 与李群沟通确认gui的设计，并确认整体python3.9环境的requirements.txt
+
+20250115 上午与李群沟通对llm debug，与王鼎讨论对手写识别模块进行baseline的对比实验，下午与王璞对emo的debug..没有太多进展
