@@ -8,8 +8,9 @@ langchain_huggingface==0.1.2
 numpy==1.26.4
 opencv_contrib_python==4.10.0.84
 opencv_python==4.10.0.84
-Pillow==11.1.0
+Pillow==10.4.0
 pydantic==2.10.5
 pytesseract==0.3.13
 sentence_transformers==3.1.1
-mediapipe==0.10.20
+mediapipe==0.10.5
+qdrant_client==1.12.2

@@ -11,6 +11,7 @@ import re
 import datetime
 import random
 import json
+import uuid
 
 from sentence_transformers import SentenceTransformer, util
 from langchain.chains import create_history_aware_retriever
@@ -71,6 +72,7 @@ def initialize_vector_store(embeddings: HuggingFaceEmbeddings) -> Qdrant:
         Document(
             page_content=str("hello"),
             metadata={"label": "role_comments"},
+            id=str(uuid.uuid4())
         )
     ]
     
