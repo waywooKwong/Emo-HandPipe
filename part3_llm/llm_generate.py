@@ -8,10 +8,10 @@
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 import re
+import uuid
 import datetime
 import random
 import json
-import uuid
 
 from sentence_transformers import SentenceTransformer, util
 from langchain.chains import create_history_aware_retriever
@@ -72,7 +72,7 @@ def initialize_vector_store(embeddings: HuggingFaceEmbeddings) -> Qdrant:
         Document(
             page_content=str("hello"),
             metadata={"label": "role_comments"},
-            id=str(uuid.uuid4())
+            id=str(uuid.uuid4())  # 使用 UUID 作为文档 ID
         )
     ]
     
